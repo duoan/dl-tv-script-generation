@@ -132,7 +132,7 @@ tests.test_tokenize(token_lookup)
 # ## Preprocess all the data and save it
 # Running the code cell below will preprocess all the data and save it to file.
 
-# In[6]:
+# In[5]:
 
 """
 DON'T MODIFY ANYTHING IN THIS CELL
@@ -144,7 +144,7 @@ helper.preprocess_and_save_data(data_dir, token_lookup, create_lookup_tables)
 # # Check Point
 # This is your first checkpoint. If you ever decide to come back to this notebook or have to restart the notebook, you can start from here. The preprocessed data has been saved to disk.
 
-# In[7]:
+# In[6]:
 
 """
 DON'T MODIFY ANYTHING IN THIS CELL
@@ -167,7 +167,7 @@ int_text, vocab_to_int, int_to_vocab, token_dict = helper.load_preprocess()
 # 
 # ### Check the Version of TensorFlow and Access to GPU
 
-# In[8]:
+# In[7]:
 
 """
 DON'T MODIFY ANYTHING IN THIS CELL
@@ -185,6 +185,11 @@ if not tf.test.gpu_device_name():
     warnings.warn('No GPU found. Please use a GPU to train your neural network.')
 else:
     print('Default GPU Device: {}'.format(tf.test.gpu_device_name()))
+
+
+# In[8]:
+
+tf.test.gpu_device_name()
 
 
 # ### Input
@@ -222,7 +227,7 @@ tests.test_get_inputs(get_inputs)
 # 
 # Return the cell and initial state in the following tuple `(Cell, InitialState)`
 
-# In[10]:
+# In[15]:
 
 # 这里的模型需要不断的调整
 def get_init_cell(batch_size, rnn_size):
@@ -233,9 +238,10 @@ def get_init_cell(batch_size, rnn_size):
     :return: Tuple (cell, initialize state)
     """
     #batch_size = tf.placeholder(tf.int32, [], name='batch_size')
-    lstm = tf.contrib.rnn.BasicLSTMCell(rnn_size)
-    drop = tf.contrib.rnn.DropoutWrapper(lstm, output_keep_prob=0.7)
-    cell = tf.contrib.rnn.MultiRNNCell([drop])
+    lstm1 = tf.contrib.rnn.BasicLSTMCell(rnn_size)
+    lstm2 = tf.contrib.rnn.BasicLSTMCell(rnn_size)
+    lstm3 = tf.contrib.rnn.BasicLSTMCell(rnn_size)
+    cell = tf.contrib.rnn.MultiRNNCell([lstm1,lstm2,lstm3])
     initial_state = cell.zero_state(batch_size, tf.float32)
     initial_state = tf.identity(initial_state, name='initial_state')
     return cell, initial_state
@@ -312,7 +318,7 @@ tests.test_build_rnn(build_rnn)
 # 
 # Return the logits and final state in the following tuple (Logits, FinalState) 
 
-# In[15]:
+# In[13]:
 
 def build_nn(cell, rnn_size, input_data, vocab_size, embed_dim):
     """
@@ -369,7 +375,7 @@ tests.test_build_nn(build_nn)
 # ]
 # ```
 
-# In[16]:
+# In[14]:
 
 def get_batches(int_text, batch_size, seq_length):
     """
@@ -379,20 +385,15 @@ def get_batches(int_text, batch_size, seq_length):
     :param seq_length: The length of sequence
     :return: Batches as a Numpy array
     """
-    slice_size = batch_size * seq_length
-    n_batches = len(int_text)//slice_size
-    int_text = int_text[:slice_size*n_batches + 1]
-    res = np.zeros((n_batches, 2, batch_size, seq_length), dtype=int)
-    
-    for i in range(n_batches):
-        for j in range(batch_size):
-            x_start = i*j*seq_length
-            x_end = x_start + seq_length
-            res[i][0][j] = int_text[x_start:x_end]
-            res[i][1][j] = int_text[x_start+1:x_end+1]
-            
-    return res
+    n_batches = int(len(int_text) / (batch_size * seq_length))
+    # Drop the last few characters to make only full batches
+    xdata = np.array(int_text[: n_batches * batch_size * seq_length])
+    ydata = np.array(int_text[1: n_batches * batch_size * seq_length + 1])
+    ydata[-1] = xdata[0]
 
+    x_batches = np.split(xdata.reshape(batch_size, -1), n_batches, 1)
+    y_batches = np.split(ydata.reshape(batch_size, -1), n_batches, 1)
+    return np.array(list(zip(x_batches, y_batches)))
 
 """
 DON'T MODIFY ANYTHING IN THIS CELL THAT IS BELOW THIS LINE
@@ -412,22 +413,22 @@ tests.test_get_batches(get_batches)
 # - Set `learning_rate` to the learning rate.
 # - Set `show_every_n_batches` to the number of batches the neural network should print progress.
 
-# In[17]:
+# In[50]:
 
 # Number of Epochs
-num_epochs = 10
+num_epochs = 1000
 # Batch Size
-batch_size = 100
+batch_size = 128
 # RNN Size
 rnn_size = 256
 # Embedding Dimension Size
 embed_dim = 600
 # Sequence Length
-seq_length = 20
+seq_length = 50
 # Learning Rate
-learning_rate = 0.1
+learning_rate = 0.001
 # Show stats for every n number of batches
-show_every_n_batches = 45
+show_every_n_batches = 64
 
 """
 DON'T MODIFY ANYTHING IN THIS CELL THAT IS BELOW THIS LINE
@@ -438,7 +439,7 @@ save_dir = './save'
 # ### Build the Graph
 # Build the graph using the neural network you implemented.
 
-# In[18]:
+# In[51]:
 
 """
 DON'T MODIFY ANYTHING IN THIS CELL
@@ -474,7 +475,7 @@ with train_graph.as_default():
 # ## Train
 # Train the neural network on the preprocessed data.  If you have a hard time getting a good loss, check the [forms](https://discussions.udacity.com/) to see if anyone is having the same problem.
 
-# In[19]:
+# In[52]:
 
 """
 DON'T MODIFY ANYTHING IN THIS CELL
@@ -509,10 +510,12 @@ with tf.Session(graph=train_graph) as sess:
     print('Model Trained and Saved')
 
 
+# 稍稍过拟合.
+
 # ## Save Parameters
 # Save `seq_length` and `save_dir` for generating a new TV script.
 
-# In[20]:
+# In[54]:
 
 """
 DON'T MODIFY ANYTHING IN THIS CELL
@@ -523,7 +526,7 @@ helper.save_params((seq_length, save_dir))
 
 # # Checkpoint
 
-# In[21]:
+# In[55]:
 
 """
 DON'T MODIFY ANYTHING IN THIS CELL
@@ -547,7 +550,7 @@ seq_length, load_dir = helper.load_params()
 # 
 # Return the tensors in the following tuple `(InputTensor, InitialStateTensor, FinalStateTensor, ProbsTensor)` 
 
-# In[22]:
+# In[56]:
 
 def get_tensors(loaded_graph):
     """
@@ -572,7 +575,7 @@ tests.test_get_tensors(get_tensors)
 # ### Choose Word
 # Implement the `pick_word()` function to select the next word using `probabilities`.
 
-# In[23]:
+# In[57]:
 
 def pick_word(probabilities, int_to_vocab):
     """
@@ -593,9 +596,9 @@ tests.test_pick_word(pick_word)
 # ## Generate TV Script
 # This will generate the TV script for you.  Set `gen_length` to the length of TV script you want to generate.
 
-# In[24]:
+# In[59]:
 
-gen_length = 200
+gen_length = 300
 # homer_simpson, moe_szyslak, or Barney_Gumble
 prime_word = 'moe_szyslak'
 
